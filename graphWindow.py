@@ -76,6 +76,8 @@ class GraphTopLevel:
 
     
 class GraphFrame(ttk.Frame):
+
+
     def __init__(self, parent, root):
         ttk.Frame.__init__(self, parent)
         self.parent = parent
@@ -105,6 +107,15 @@ class GraphFrame(ttk.Frame):
 
         
 class Graph(ttk.Frame):
+
+    XFrom = 0
+    XEnd = 100
+    YFrom = 0
+    YEnd = 1
+    XaxisVal = 0
+    XMoveLen = XEnd / 5
+    AdjustList = []
+
     def __init__(self, parent, root):
         ttk.Frame.__init__(self, parent)
         self.parent = parent
@@ -135,7 +146,7 @@ class Graph(ttk.Frame):
             self.root.ax[str(ax)].set_xlim([-datadepth, 0])
             self.root.ax[str(ax)].grid(True)
             self.root.ax[str(ax)].tick_params(axis='both', labelsize=16)
-            
+
         #Create an empty list to store line objects in. The position in the list
         #is also the line number
         self.root.lines = []
@@ -311,8 +322,34 @@ class Graph(ttk.Frame):
             #Otherwise we're using pySerial 3.x
             serial.Serial.reset_input_buffer(self.root.ser)
             serial.Serial.reset_output_buffer(self.root.ser)
-            
-            
+
+    def AdjustAxisX(self,listx):
+        # global.XFrom
+        # global XEnd
+        if len(self.XaxisVal) >= self.XEnd:
+            self.XEnd = self.XEnd + self.XMoveLen
+            self.XFrom = self.XFrom + self.XMoveLen
+            plt.axis([self.XFrom, self.XEnd, self.YFrom, self.YEnd])
+
+    # ydata.append(i%10)
+    # with recently 20 value,auto adjuet axis value，
+    def AdjustAxisY(self,data):
+        if len(self.AdjustList) < 20:
+            self.AdjustList.append(data)
+        else:
+            # global XEnd
+            # global XFrom
+            # global YFrom
+            # global YEnd
+
+            Mindata = min(self.AdjustList)
+            Maxdata = max(self.AdjustList)
+            # 自动调整Y轴的起始与结束的刻度，比之前最大值要大1/5，比最小值要低1/5
+            self.YFrom = Mindata - abs(Mindata / 5)
+            self.YEnd = Maxdata + abs(Maxdata / 5)
+            plt.axis([self.XFrom, self.XEnd, self.YFrom, self.YEnd])
+
+
     def updateGraph(self, frameNum, *args, **kwargs):
         #Find how much stuff is in the serial buffer and update the status bar
         bufflen = serialqueue(self.root.ser)
@@ -330,8 +367,8 @@ class Graph(ttk.Frame):
             val_list = val.split(',')
             
             #If the line isn't what we're expecting, discard it. It's a partial line.
-            if len(val_list) != int(self.root.variables['datalength']):
-                val_list = []
+            # if len(val_list) != int(self.root.variables['datalength']):
+            #     val_list = []
             
             #I had issues with some garbage making it into the serial buffer
             #and causing issues with the animation - solution is to check it
