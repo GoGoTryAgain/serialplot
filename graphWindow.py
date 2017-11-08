@@ -5,6 +5,7 @@ the configuration is complete. All the graph updating takes place in updateGraph
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
+from StepAlgorithm import StepAlgo
 import matplotlib.animation as animation
 
 import sys
@@ -12,6 +13,9 @@ import serial
 import io
 import time
 import os
+import threading
+
+Algo = StepAlgo()
 
 if sys.version_info[0] < 3:
     #If we're executing with Python 2
@@ -26,6 +30,7 @@ else:
     from tkinter import ttk
     from tkinter import messagebox    
     serialqueue = serial.Serial.inWaiting    
+
 
 
 class GraphTopLevel:
@@ -55,7 +60,7 @@ class GraphTopLevel:
         scrwidth = self.root.winfo_screenwidth()
         scrheight = self.root.winfo_screenheight()
         winwidth = 1100
-        winheight = 1000
+        winheight = 900
         winposx = int(round(scrwidth/2 - winwidth/2))
         winposy = int(round(scrheight/2 - winheight/2))
         self.root.geometry('{}x{}+{}+{}'.format(winwidth, winheight, winposx, winposy))
@@ -87,6 +92,7 @@ class GraphFrame(ttk.Frame):
         self.root.variables.update({'buffsize':tk.StringVar()})
         self.root.variables.update({'lastline':tk.StringVar(value='Nothing Recieved')})
         self.root.variables.update({'refreshrate':tk.StringVar(value=0)})
+        self.root.variables.update({'StepCount': tk.StringVar(value=0)})
         self.root.count = 0     #the number of lines we've recieved
         self.root.starttime = 0 #time when we started      
         
@@ -108,28 +114,31 @@ class GraphFrame(ttk.Frame):
         
 class Graph(ttk.Frame):
 
-    XFrom = 0
-    XEnd = 100
-    YFrom = 0
-    YEnd = 1
-    XaxisVal = 0
-    XMoveLen = XEnd / 5
-    AdjustList = []
+
 
     def __init__(self, parent, root):
         ttk.Frame.__init__(self, parent)
         self.parent = parent
-        self.root = root                
+        self.root = root
+
+        self.XFrom = 0
+        self.XEnd = int(self.root.variables['datadepth'])
+        self.YFrom = 0
+        self.YEnd = 1
+        self.XaxisVal = 0
+        self.XMoveLen = self.XEnd / 5
+        self.AdjustList = []
 
         #Create the figure object to put all the axes in        
         self.root.f = Figure(facecolor='white')
-        
+        #create timer
+
         #Create an empty dictionary to store the axis handles in
         self.root.ax = {}
         numgraphs = int(self.root.variables['numgraphs'])
         
         #Based on the number of graphs we want, create the axis objects
-        for ax in range(1,numgraphs + 1):
+        for ax in range(1,numgraphs + 1 ):
             #This creates a dictionary, with the keys being character axis
             #number (ie '1', '2', etc)
         
@@ -143,7 +152,8 @@ class Graph(ttk.Frame):
             
             self.root.ax[str(ax)] = self.root.f.add_subplot(numgraphs, 1, ax)
             self.root.ax[str(ax)].set_ylim(lims)
-            self.root.ax[str(ax)].set_xlim([-datadepth, 0])
+            self.root.ax[str(ax)].set_xlim([0,datadepth])
+            # self.root.ax[str(ax)].set_xlim([-datadepth, 0])
             self.root.ax[str(ax)].grid(True)
             self.root.ax[str(ax)].tick_params(axis='both', labelsize=16)
 
@@ -158,7 +168,9 @@ class Graph(ttk.Frame):
         #the position of the data it will be applied to. e.g. [data1, data2]
         #would have [[multiplier1, offset,], [multiplier2, offset2]]
         self.root.dataMultOff = []
-        
+
+
+
         #Create a list to store all the data
         self.root.data = []
         for column in range(0, int(self.root.variables['datalength'])):
@@ -323,38 +335,55 @@ class Graph(ttk.Frame):
             serial.Serial.reset_input_buffer(self.root.ser)
             serial.Serial.reset_output_buffer(self.root.ser)
 
-    def AdjustAxisX(self,listx):
+    def AdjustAxisX(self,Xvalue):
         # global.XFrom
         # global XEnd
-        if len(self.XaxisVal) >= self.XEnd:
+
+        # if len(self.XaxisVal) >= self.XEnd:
+        self.XaxisVal = self.XaxisVal + 1
+        if self.XaxisVal >= self.XEnd:
             self.XEnd = self.XEnd + self.XMoveLen
             self.XFrom = self.XFrom + self.XMoveLen
-            plt.axis([self.XFrom, self.XEnd, self.YFrom, self.YEnd])
+            numgraphs = int(self.root.variables['numgraphs'])
+            for ax in range(1, numgraphs + 1):
+                self.root.ax[str(ax)].set_xlim([self.XFrom, self.XEnd])
+                self.root.ax[str(ax)].grid(True)
+
 
     # ydata.append(i%10)
     # with recently 20 value,auto adjuet axis value，
-    def AdjustAxisY(self,data):
+    def AdjustAxisY(self,Yvalue):
         if len(self.AdjustList) < 20:
-            self.AdjustList.append(data)
+            self.AdjustList.append(Yvalue)
         else:
             # global XEnd
             # global XFrom
             # global YFrom
             # global YEnd
+            self.AdjustList.pop(0)
+            self.AdjustList.append(Yvalue)
 
             Mindata = min(self.AdjustList)
             Maxdata = max(self.AdjustList)
             # 自动调整Y轴的起始与结束的刻度，比之前最大值要大1/5，比最小值要低1/5
             self.YFrom = Mindata - abs(Mindata / 5)
             self.YEnd = Maxdata + abs(Maxdata / 5)
-            plt.axis([self.XFrom, self.XEnd, self.YFrom, self.YEnd])
+            numgraphs = int(self.root.variables['numgraphs'])
+            for ax in range(1, numgraphs + 1):
+                self.root.ax[str(ax)].set_ylim([self.YFrom, self.YEnd])
+                #plt.axis([self.XFrom, self.XEnd, self.YFrom, self.YEnd])
+
+
+
+    def StepUpdateCallBack(self,Step):
+        self.root.variables['StepCount'].set(value=Step)
 
 
     def updateGraph(self, frameNum, *args, **kwargs):
         #Find how much stuff is in the serial buffer and update the status bar
         bufflen = serialqueue(self.root.ser)
         self.root.variables['buffsize'].set(value=str(bufflen))      
-        
+
         #While the serial buffer lenght is greater than the threshold, read out
         #the buffer until we're below the threshold
         while int(serialqueue(self.root.ser)) >= int(self.root.variables['maxlength']):
@@ -410,13 +439,28 @@ class Graph(ttk.Frame):
                     self.root.logfile.write(self.root.tmplog)
                     self.root.logfile.close()
                     self.root.tmplog = ''
-           
+
+            Algo.StepAlgo(val_list[0],self.StepUpdateCallBack)
+            # ToDO self.StepThisAdd = self.StepThisAdd + Algo.StepAlgo(val_list[0])
+            # if self.StepThisAdd:
+            #
+            #     if not self.timerStepUp.is_alive() :
+            #         self.timerStepUp = threading.Timer(4, self.FunTimer)
+            #         self.timerStepUp.start()
+
+
+
+
+
             for variable in range(len(val_list)):
                 #If the list is greater than datadepth, remove the first row
                 if len(self.root.data[variable]) > int(self.root.variables['datadepth']):
                     self.root.data[variable].pop(0)
                 #Append the new data to the end
-                self.root.data[variable].append(val_list[variable])         
+                self.root.data[variable].append(val_list[variable])
+
+                # self.AdjustAxisX(val_list[variable])
+                # self.AdjustAxisY(val_list[variable])
 
             #Update the estimated update rate            
             self.root.count += 1
@@ -430,6 +474,9 @@ class Graph(ttk.Frame):
                 self.root.variables['refreshrate'].set(\
                     value='{:.1f}'.format(round(self.root.count/time.clock(), 1)))
 
+
+
+
                 #If we're recording everything to a spreadsheet, 
                 #write the temp list to the spreadsheet
      
@@ -437,7 +484,7 @@ class Graph(ttk.Frame):
         for line in range(len(self.root.lines)):
             datapos = self.root.lineDataPos[line] - 1
             ydata = self.root.data[datapos]
-            xdata = range(-len(ydata), 0)
+            xdata = range(0,len(ydata))
             self.root.lines[line].set_data(xdata, ydata)
         
         return self.root.lines
@@ -485,7 +532,15 @@ class StatusBar(ttk.Frame):
         ttk.Label(self, text='Hz (Est)').pack(side='left')
         
         ttk.Separator(self, orient='vertical').pack(side='left', fill='y', padx=5)        
-        
+
+        StepLabel = ttk.Label(self, text='Step: ')
+        StepLabel.pack(side='left')
+        StepCount = ttk.Label(self, textvariable=self.root.variables['StepCount'])
+        StepCount.pack(side='left')
+        ttk.Label(self, text='步').pack(side='left')
+        ttk.Separator(self, orient='vertical').pack(side='left', fill='y', padx=5)
+
+
         if self.root.variables['log2file'] == 'on':
             self.root.toggleLogButton = ttk.Button(self, text='Turn Logging Off', command = self.toggleLog)
             self.root.toggleLogButton.pack(side='left')

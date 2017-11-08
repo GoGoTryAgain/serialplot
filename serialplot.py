@@ -9,6 +9,7 @@ import os
 
 from cfgWindow import *
 
+
 root = tk.Tk()
 
 #Hide the window so we can't see it jump to the middle

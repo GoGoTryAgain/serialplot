@@ -101,7 +101,6 @@ class ConfigFrame(ttk.Frame):
             
     def goButton(self):
         self.parent.variables = {}
-
         for key in self.TKvariables:
             if key[0:5] == 'graph' or key.find('ylims') >= 0:
                 self.parent.variables.update({key:[]})
@@ -112,11 +111,12 @@ class ConfigFrame(ttk.Frame):
         
         if self.parent.variables['COMport'] == '':
             messagebox.showerror(message='Select a COM port!')
+
         else:
             try:
                 #Try to open the COM port first to make sure it's available                
                 if os.name == 'nt':
-                    s = serial.Serial(port=self.parent.variables['COMport'][0:4])
+                    s = serial.Serial(port=self.parent.variables['COMport'][0:5])
                 else:
                     first_space = self.parent.variables['COMport'].index(' ')
                     # Parameters necessary due to https://github.com/pyserial/pyserial/issues/59
